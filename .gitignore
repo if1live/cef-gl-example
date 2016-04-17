@@ -7,3 +7,10 @@ install_manifest.txt
 
 # build output
 build
+
+# cef
+/include/
+/Debug/
+/Release/
+/Resources/
+/libcef_dll/
