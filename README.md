@@ -1,6 +1,8 @@
 # cef-gl-example
 Chromium Embedded Framework + OpenGL
 
+![screenshot](https://raw.githubusercontent.com/if1live/cef-gl-example/master/document/screenshot.png)
+
 ## Build
 ### Required
 * Visual Studio 2015
