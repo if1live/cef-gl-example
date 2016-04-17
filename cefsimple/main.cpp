@@ -3,16 +3,20 @@
 
 #include <string>
 #include <algorithm>
+#include <cassert>
 
 // CEF
 #include <include/cef_browser.h>
 #include <include/cef_app.h>
 
-
-
 // GL
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
+
+#include "gl_core.h"
 
 #include "render_handler.h"
 #include "browser_client.h"
@@ -58,6 +62,7 @@ GLFWwindow *initialize_glfw_window(int w, int h)
 		exit(EXIT_FAILURE);
 	}
 	glfwMakeContextCurrent(window);
+
 	return window;
 }
 
@@ -95,55 +100,16 @@ bool is_main_process(int argc, char *argv[])
 	return true;
 }
 
-void draw(GLFWwindow *window)
-{
-	float ratio;
-	int width, height;
-	glfwGetFramebufferSize(window, &width, &height);
-	ratio = width / (float)height;
-
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(-ratio, ratio, -1.f, 1.f, 1.f, -1.f);
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glRotatef((float)glfwGetTime() * 10.f, 0.f, 0.f, 1.f);
-
-	glBegin(GL_TRIANGLE_FAN);
-	// 3 2
-	// 0 1
-
-	// 0
-	glTexCoord2f(0.0f, 1.0f);
-	glVertex3f(-0.8f, -0.8f, 0.f);
-
-	// 1
-	glTexCoord2f(1.0f, 1.0f);
-	glVertex3f(0.8f, -0.8f, 0.f);
-
-	// 2
-	glTexCoord2f(1.0f, 0.0f);
-	glVertex3f(0.8f, 0.8f, 0.f);
-
-	// 3
-	glTexCoord2f(0.0f, 0.0f);
-	glVertex3f(-0.8f, 0.8f, 0.f);
-
-	glEnd();
-}
-
-void display(GLFWwindow* window)
-{
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	draw(window);
-	glfwSwapBuffers(window);
-}
-
 void reshape_callback(GLFWwindow* window, int w, int h)
 {
 	glViewport(0, 0, (GLsizei)w, (GLsizei)h);
 }
+
+
+GLint pos_loc = -1;
+GLint texcoord_loc = -1;
+GLint tex_loc = -1;
+GLint mvp_loc = -1;
 
 
 int main(int argc, char *argv[])
@@ -207,21 +173,89 @@ int main(int argc, char *argv[])
 	glfwSetMouseButtonCallback(window, mouse_callback);
 	glfwSetFramebufferSizeCallback(window, reshape_callback);
 
+	// shader
+	GLuint prog = 0;
+	if (window) 
+	{
+		prog = GLCore::createShaderProgram("shaders/tex.vert", "shaders/tex.frag");
+		assert(prog != 0 && "shader compile failed");
+
+		pos_loc = glGetAttribLocation(prog, "a_position");
+		texcoord_loc = glGetAttribLocation(prog, "a_texcoord");
+		tex_loc = glGetUniformLocation(prog, "s_tex");
+		mvp_loc = glGetUniformLocation(prog, "u_mvp");
+	}
+
+	// initial GL state
+	glViewport(0, 0, width, height);
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 
-	while (!glfwWindowShouldClose(window))
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_CULL_FACE);
+
+	// 2 3
+	// 0 1
+	float vertices[] = {
+		-1, -1, 0,
+		1, -1, 0,
+		-1, 1, 0,
+		1, 1, 0,
+	};
+
+	float texcoords[] = {
+		0, 1,
+		1, 1,
+		0, 0,
+		1, 0,
+	};
+
+	unsigned short indices[] = {
+		0, 1, 3,
+		0, 3, 2,
+	};
+
+	while (true)
 	{
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, renderHandler->tex());
-		// draw
-		display(window);
-		glDisable(GL_TEXTURE_2D);
+		if (window) {
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// update
-		glfwPollEvents();
+			glUseProgram(prog);
 
-		// cef
-		CefDoMessageLoopWork();
+			glm::mat4 mvp = glm::ortho(-1, 1, -1, 1);
+			//mvp *= glm::rotate((float)glfwGetTime() * 10.f, glm::vec3(0, 0, 1));
+			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
+
+			glEnableVertexAttribArray(pos_loc);
+			glEnableVertexAttribArray(texcoord_loc);
+
+			// bind texture
+			glBindTexture(GL_TEXTURE_2D, renderHandler->tex());
+			glUniform1i(tex_loc, 0);
+
+			// draw
+			glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+			glVertexAttribPointer(texcoord_loc, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
+			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
+
+			glfwSwapBuffers(window);
+
+			// update
+			glfwPollEvents();
+
+			// cef
+			CefDoMessageLoopWork();
+		}
+		else 
+		{
+			// cef
+			CefDoMessageLoopWork();
+			Sleep(50);
+		}
+
+		if (glfwWindowShouldClose(window)) 
+		{
+			break;
+		}
 	}
 
 	// close cef
@@ -232,7 +266,12 @@ int main(int argc, char *argv[])
 	browserClient = nullptr;
 	CefShutdown();
 
-	if (window) {
+	if (prog)
+	{
+		GLCore::deleteProgram(prog);
+	}
+	if (window) 
+	{	
 		shutdown_glfw(window);
 	}
 

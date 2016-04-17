@@ -50,6 +50,8 @@ APPEND_LINK_LIBS( libglew_shared )
 INCLUDE_DIRECTORIES( ${CEFSIMPLE_EXT_DIR}/glfw/include )
 APPEND_LINK_LIBS( glfw )
 
+# Add glm
+INCLUDE_DIRECTORIES( ${CEFSIMPLE_EXT_DIR}/glm )
 
 #########################################################
 
@@ -116,5 +118,8 @@ if(OS_WINDOWS)
   # copy glew dll  
   COPY_FILE_FORCE(${CEF_TARGET} "glewd.dll" ${CEF_TARGET_OUT_DIR})
   COPY_FILE_FORCE(${CEF_TARGET} "glew.dll" ${CEF_TARGET_OUT_DIR})
+  
+  # copy shader
+  COPY_FILES("${CEF_TARGET}" "shaders" "${CMAKE_CURRENT_SOURCE_DIR}" "${CEF_TARGET_OUT_DIR}/..")
 endif()
 
