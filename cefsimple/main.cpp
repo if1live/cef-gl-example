@@ -7,92 +7,15 @@
 // CEF
 #include <include/cef_browser.h>
 #include <include/cef_app.h>
-#include <include/cef_render_handler.h>
-#include <include/cef_client.h>
+
+
 
 // GL
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-class RenderHandler : public CefRenderHandler
-{
-public:
-	RenderHandler(int w, int h) : width_(w), height_(h), tex_(0) {}
-
-public:
-	void init()
-	{
-		glGenTextures(1, &tex_);
-		glBindTexture(GL_TEXTURE_2D, tex_);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-		const unsigned char data[] = {
-			255, 0, 0, 255,
-			0, 255, 0, 255,
-			0, 0, 255, 255,
-			255, 255, 255, 255,
-		};
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
-	void resize(int w, int h)
-	{
-		width_ = w;
-		height_ = h;
-	}
-
-	// CefRenderHandler interface
-public:
-	bool GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect)
-	{
-		rect = CefRect(0, 0, width_, height_);
-		return true;
-	}
-
-	void OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList &dirtyRects, const void *buffer, int width, int height)
-	{
-		glBindTexture(GL_TEXTURE_2D, tex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, (unsigned char*)buffer);
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
-
-	// CefBase interface
-public:
-	IMPLEMENT_REFCOUNTING(RenderHandler);
-
-public:
-	GLuint tex() const { return tex_; }
-
-private:
-	int width_;
-	int height_;
-
-	GLuint tex_;
-};
-
-// for manual render handler
-class BrowserClient : public CefClient
-{
-public:
-	BrowserClient(RenderHandler *renderHandler)
-		: m_renderHandler(renderHandler)
-	{
-		;
-	}
-
-	virtual CefRefPtr<CefRenderHandler> GetRenderHandler() {
-		return m_renderHandler;
-	}
-
-	CefRefPtr<CefRenderHandler> m_renderHandler;
-
-	IMPLEMENT_REFCOUNTING(BrowserClient);
-};
+#include "render_handler.h"
+#include "browser_client.h"
 
 
 static void error_callback(int error, const char* description)
@@ -250,7 +173,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	RenderHandler *renderHandler = new RenderHandler(width, height);
+	RenderHandler *renderHandler = new RenderHandler();
 	renderHandler->init();
 	renderHandler->resize(1024, 1024);
 
