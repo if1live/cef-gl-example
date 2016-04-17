@@ -21,6 +21,10 @@
 #include "render_handler.h"
 #include "browser_client.h"
 
+int mouseX = 0;
+int mouseY = 0;
+CefRefPtr<CefBrowser> browser;
+
 
 static void error_callback(int error, const char* description)
 {
@@ -39,12 +43,38 @@ void mouse_callback(GLFWwindow* window, int btn, int state, int mods)
 	// send mouse click to browser
 	//cefgui->mouseClick(btn, GLFW_PRESS);
 	//cefgui->mouseClick(btn, GLFW_RELEASE);
+	{
+		CefMouseEvent event;
+		event.x = mouseX;
+		event.y = mouseY;
+
+		bool mouseUp = GLFW_PRESS == 0;
+		CefBrowserHost::MouseButtonType btnType = MBT_LEFT;
+		browser->GetHost()->SendMouseClickEvent(event, btnType, mouseUp, 1);
+	}
+	{
+		CefMouseEvent event;
+		event.x = mouseX;
+		event.y = mouseY;
+
+		bool mouseUp = GLFW_RELEASE == 0;
+		CefBrowserHost::MouseButtonType btnType = MBT_LEFT;
+		browser->GetHost()->SendMouseClickEvent(event, btnType, mouseUp, 1);
+	}
 }
 
 void motion_callback(GLFWwindow* window, double x, double y)
 {
 	// send mouse movement to browser
 	//cefgui->mouseMove((int)x, (int)y);
+	mouseX = x;
+	mouseY = y;
+
+	CefMouseEvent event;
+	event.x = x;
+	event.y = y;
+
+	browser->GetHost()->SendMouseMoveEvent(event, false);
 }
 
 GLFWwindow *initialize_glfw_window(int w, int h)
@@ -141,14 +171,15 @@ int main(int argc, char *argv[])
 
 	RenderHandler *renderHandler = new RenderHandler();
 	renderHandler->init();
-	renderHandler->resize(1024, 1024);
+	renderHandler->resize(width, height);
 
 	// create browser-window
-	CefRefPtr<CefBrowser> browser;
+	//CefRefPtr<CefBrowser> browser;
 	CefRefPtr<BrowserClient> browserClient;
 
 	CefWindowInfo window_info;
-	window_info.SetAsWindowless(nullptr, true);
+	HWND hwnd = GetConsoleWindow();
+	window_info.SetAsWindowless(hwnd, true);
 
 	CefBrowserSettings browserSettings;
 	// browserSettings.windowless_frame_rate = 60; // 30 is default
