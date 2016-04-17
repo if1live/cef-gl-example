@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include <string>
+#include <map>
 #include <algorithm>
 #include <cassert>
 
@@ -20,61 +21,37 @@
 
 #include "render_handler.h"
 #include "browser_client.h"
+#include "web_core.h"
 
-int mouseX = 0;
-int mouseY = 0;
-CefRefPtr<CefBrowser> browser;
-
+std::unique_ptr<WebCore> web_core;
 
 static void error_callback(int error, const char* description)
 {
 	fputs(description, stderr);
 }
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-		glfwSetWindowShouldClose(window, GL_TRUE);
-	}
+	bool pressed = (action == GLFW_PRESS);
+	web_core->keyPress(key, pressed);
 }
 
 void mouse_callback(GLFWwindow* window, int btn, int state, int mods)
 {
-	// send mouse click to browser
-	//cefgui->mouseClick(btn, GLFW_PRESS);
-	//cefgui->mouseClick(btn, GLFW_RELEASE);
-	{
-		CefMouseEvent event;
-		event.x = mouseX;
-		event.y = mouseY;
+	int mouse_up = (GLFW_RELEASE == state);
 
-		bool mouseUp = GLFW_PRESS == 0;
-		CefBrowserHost::MouseButtonType btnType = MBT_LEFT;
-		browser->GetHost()->SendMouseClickEvent(event, btnType, mouseUp, 1);
-	}
-	{
-		CefMouseEvent event;
-		event.x = mouseX;
-		event.y = mouseY;
+	std::map<int, CefBrowserHost::MouseButtonType> btn_type_map;
+	btn_type_map[GLFW_MOUSE_BUTTON_LEFT] = MBT_LEFT;
+	btn_type_map[GLFW_MOUSE_BUTTON_MIDDLE] = MBT_MIDDLE;
+	btn_type_map[GLFW_MOUSE_BUTTON_RIGHT] = MBT_RIGHT;
+	CefBrowserHost::MouseButtonType btn_type = btn_type_map[btn];
 
-		bool mouseUp = GLFW_RELEASE == 0;
-		CefBrowserHost::MouseButtonType btnType = MBT_LEFT;
-		browser->GetHost()->SendMouseClickEvent(event, btnType, mouseUp, 1);
-	}
+	web_core->mouseClick(btn_type, mouse_up);
 }
 
 void motion_callback(GLFWwindow* window, double x, double y)
 {
-	// send mouse movement to browser
-	//cefgui->mouseMove((int)x, (int)y);
-	mouseX = x;
-	mouseY = y;
-
-	CefMouseEvent event;
-	event.x = x;
-	event.y = y;
-
-	browser->GetHost()->SendMouseMoveEvent(event, false);
+	web_core->mouseMove(x, y);
 }
 
 GLFWwindow *initialize_glfw_window(int w, int h)
@@ -169,37 +146,17 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	RenderHandler *renderHandler = new RenderHandler();
-	renderHandler->init();
-	renderHandler->resize(width, height);
-
-	// create browser-window
-	//CefRefPtr<CefBrowser> browser;
-	CefRefPtr<BrowserClient> browserClient;
-
-	CefWindowInfo window_info;
-	HWND hwnd = GetConsoleWindow();
-	window_info.SetAsWindowless(hwnd, true);
-
-	CefBrowserSettings browserSettings;
-	// browserSettings.windowless_frame_rate = 60; // 30 is default
-
-	browserClient = new BrowserClient(renderHandler);
-
-	//std::string url = "http://deanm.github.io/pre3d/monster.html";
-	//std::string url = "https://gae9.com";
 	std::string url = "http://google.com";
-	browser = CefBrowserHost::CreateBrowserSync(window_info, browserClient.get(), url, browserSettings, nullptr);
+	web_core = std::make_unique<WebCore>(url);
+	web_core->reshape(width, height);
 
-	// inject user-input by calling - non-trivial for non-windows - checkout the cefclient source and the platform specific cpp, like cefclient_osr_widget_gtk.cpp for linux
-	// browser->GetHost()->SendKeyEvent(...);
-	// browser->GetHost()->SendMouseMoveEvent(...);
-	// browser->GetHost()->SendMouseClickEvent(...);
-	// browser->GetHost()->SendMouseWheelEvent(...);
+	std::string other_url = "https://github.com/if1live/";
+	auto web_core_other = std::make_unique<WebCore>(other_url);
+	web_core_other->reshape(width, height);
 
 	// setup glfw
 	glfwSwapInterval(1);
-	glfwSetKeyCallback(window, key_callback);
+	glfwSetKeyCallback(window, key_callback);  
 	glfwSetCursorPosCallback(window, motion_callback);
 	glfwSetMouseButtonCallback(window, mouse_callback);
 	glfwSetFramebufferSizeCallback(window, reshape_callback);
@@ -260,13 +217,21 @@ int main(int argc, char *argv[])
 			glEnableVertexAttribArray(texcoord_loc);
 
 			// bind texture
-			glBindTexture(GL_TEXTURE_2D, renderHandler->tex());
-			glUniform1i(tex_loc, 0);
+			glBindTexture(GL_TEXTURE_2D, web_core->render_handler()->tex());
 
 			// draw
 			glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
 			glVertexAttribPointer(texcoord_loc, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
 			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
+
+
+			// draw other web core
+			mvp *= glm::rotate((float)glfwGetTime() * 0.1f, glm::vec3(0, 0, 1));
+			mvp *= glm::scale(glm::vec3(0.5, 0.5, 0.5));
+			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
+			glBindTexture(GL_TEXTURE_2D, web_core_other->render_handler()->tex());
+			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
+
 
 			glfwSwapBuffers(window);
 
@@ -290,11 +255,8 @@ int main(int argc, char *argv[])
 	}
 
 	// close cef
-	browser->GetHost()->CloseBrowser(true);
-	CefDoMessageLoopWork();
-
-	browser = nullptr;
-	browserClient = nullptr;
+	web_core_other.reset();
+	web_core.reset();
 	CefShutdown();
 
 	if (prog)
