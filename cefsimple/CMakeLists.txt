@@ -53,15 +53,52 @@ APPEND_LINK_LIBS( glfw )
 
 #########################################################
 
+# glew는 디버그/릴리즈에서 다른 이름의 dll 파일이 생성된다
+# 근데 파일이 없으면 cmake 복사가 제대로 돌아가지 않더라
+# 그래서 가짜 파일 만들어서 돌아가도록 만듬
+# TODO Debug/Release 를 구분할수 있는 더 좋은 방법 있으면 바꿀수 있을텐데
+MACRO(COPY_FILE_FORCE target source_file target_dir)
+  SET(GLEW_DLL_DIR "${CMAKE_BINARY_DIR}/bin/$<CONFIGURATION>")
+  SET(GLEW_DLL_DIR_DEBUG "${CMAKE_BINARY_DIR}/bin/Debug")
+  SET(GLEW_DLL_DIR_RELEASE "${CMAKE_BINARY_DIR}/bin/Release")
+  
+  SET(GLEW_DLL_DIRS ${GLEW_DLL_DIR_DEBUG} ${GLEW_DLL_DIR_RELEASE})
+  FOREACH(DIR ${GLEW_DLL_DIRS})
+    ADD_CUSTOM_COMMAND(
+      TARGET ${target}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${DIR}
+      VERBATIM
+    )
+	ADD_CUSTOM_COMMAND(
+      TARGET ${target}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E touch "${DIR}/${source_file}"
+      VERBATIM
+    )
+  ENDFOREACH()
+  
+  ADD_CUSTOM_COMMAND(
+    TARGET ${target}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GLEW_DLL_DIR}/${source_file}" ${target_dir}
+    VERBATIM
+  )
+ENDMACRO()
+
+
 #
 # Windows configuration.
 #
 
 if(OS_WINDOWS)
   # Executable target.
-  add_executable(${CEF_TARGET} WIN32 ${CEFSIMPLE_SRCS})
+  #add_executable(${CEF_TARGET} WIN32 ${CEFSIMPLE_SRCS})
+  add_executable(${CEF_TARGET} ${CEFSIMPLE_SRCS})
   add_dependencies(${CEF_TARGET} libcef_dll_wrapper)
   target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper ${CEF_STANDARD_LIBS})
+  
+  TARGET_LINK_LIBRARIES( ${CEF_TARGET} ${CEFSIMPLE_LINK_LIBS} )
 
   if(USE_SANDBOX)
     # Logical target used to link the cef_sandbox library.
@@ -75,4 +112,9 @@ if(OS_WINDOWS)
   # Copy binary and resource files to the target output directory.
   COPY_FILES("${CEF_TARGET}" "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${CEF_TARGET_OUT_DIR}")
   COPY_FILES("${CEF_TARGET}" "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${CEF_TARGET_OUT_DIR}")
+  
+  # copy glew dll  
+  COPY_FILE_FORCE(${CEF_TARGET} "glewd.dll" ${CEF_TARGET_OUT_DIR})
+  COPY_FILE_FORCE(${CEF_TARGET} "glew.dll" ${CEF_TARGET_OUT_DIR})
 endif()
+

@@ -397,7 +397,9 @@ if(OS_WINDOWS)
   # /wd"4701"             = Ignore "potentially uninitialized local variable" warning
   # /wd"4702"             = Ignore "unreachable code" warning
   # /wd"4996"             = Ignore "function or variable may be unsafe" warning
-  set(CEF_COMPILER_FLAGS          "/MP /Gy /GR- /W4 /WX /wd\"4100\" /wd\"4127\" /wd\"4244\" /wd\"4481\" /wd\"4512\" /wd\"4701\" /wd\"4702\" /wd\"4996\" ${CEF_DEBUG_INFO_FLAG}")
+  #set(CEF_COMPILER_FLAGS          "/MP /Gy /GR- /W4 /WX /wd\"4100\" /wd\"4127\" /wd\"4244\" /wd\"4481\" /wd\"4512\" /wd\"4701\" /wd\"4702\" /wd\"4996\" ${CEF_DEBUG_INFO_FLAG}")
+  # /WX is hard to follow
+  set(CEF_COMPILER_FLAGS          "/MP /Gy /GR- /W4 /wd\"4100\" /wd\"4127\" /wd\"4244\" /wd\"4481\" /wd\"4512\" /wd\"4701\" /wd\"4702\" /wd\"4996\" ${CEF_DEBUG_INFO_FLAG}")
   # /MTd                  = Multithreaded debug runtime
   # /Od                   = Disable optimizations
   # /RTC1                 = Enable basic run-time checks
