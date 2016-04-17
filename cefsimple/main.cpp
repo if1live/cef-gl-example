@@ -6,10 +6,6 @@
 #include <algorithm>
 #include <cassert>
 
-// CEF
-#include <include/cef_browser.h>
-#include <include/cef_app.h>
-
 // GL
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -20,10 +16,10 @@
 #include "gl_core.h"
 
 #include "render_handler.h"
-#include "browser_client.h"
 #include "web_core.h"
 
-std::unique_ptr<WebCore> web_core;
+std::weak_ptr<WebCore> web_core;
+WebCoreManager g_web_core_manager;
 
 static void error_callback(int error, const char* description)
 {
@@ -33,7 +29,7 @@ static void error_callback(int error, const char* description)
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	bool pressed = (action == GLFW_PRESS);
-	web_core->keyPress(key, pressed);
+	web_core.lock()->keyPress(key, pressed);
 }
 
 void mouse_callback(GLFWwindow* window, int btn, int state, int mods)
@@ -46,12 +42,12 @@ void mouse_callback(GLFWwindow* window, int btn, int state, int mods)
 	btn_type_map[GLFW_MOUSE_BUTTON_RIGHT] = MBT_RIGHT;
 	CefBrowserHost::MouseButtonType btn_type = btn_type_map[btn];
 
-	web_core->mouseClick(btn_type, mouse_up);
+	web_core.lock()->mouseClick(btn_type, mouse_up);
 }
 
 void motion_callback(GLFWwindow* window, double x, double y)
 {
-	web_core->mouseMove(x, y);
+	web_core.lock()->mouseMove(x, y);
 }
 
 GLFWwindow *initialize_glfw_window(int w, int h)
@@ -135,24 +131,19 @@ int main(int argc, char *argv[])
 		// initialize glew context
 		initialize_glew_context();
 	}
+
 	
-	CefMainArgs args;
-	int exit_code = CefExecuteProcess(args, nullptr, nullptr);
-	if (exit_code >= 0) { return exit_code; }
-	
-	CefSettings settings;
-	bool result = CefInitialize(args, settings, nullptr, nullptr);
-	if (!result) {
-		return -1;
-	}
+	int exit_code = 0;
+	bool success = g_web_core_manager.setUp(&exit_code);
+	if (!success) { return exit_code; }
 
 	std::string url = "http://google.com";
-	web_core = std::make_unique<WebCore>(url);
-	web_core->reshape(width, height);
+	web_core = g_web_core_manager.createBrowser(url);
+	web_core.lock()->reshape(width, height);
 
 	std::string other_url = "https://github.com/if1live/";
-	auto web_core_other = std::make_unique<WebCore>(other_url);
-	web_core_other->reshape(width, height);
+	auto web_core_other = g_web_core_manager.createBrowser(other_url);
+	web_core_other.lock()->reshape(width, height);
 
 	// setup glfw
 	glfwSwapInterval(1);
@@ -217,7 +208,7 @@ int main(int argc, char *argv[])
 			glEnableVertexAttribArray(texcoord_loc);
 
 			// bind texture
-			glBindTexture(GL_TEXTURE_2D, web_core->render_handler()->tex());
+			glBindTexture(GL_TEXTURE_2D, web_core.lock()->render_handler()->tex());
 
 			// draw
 			glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
@@ -229,7 +220,7 @@ int main(int argc, char *argv[])
 			mvp *= glm::rotate((float)glfwGetTime() * 0.1f, glm::vec3(0, 0, 1));
 			mvp *= glm::scale(glm::vec3(0.5, 0.5, 0.5));
 			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
-			glBindTexture(GL_TEXTURE_2D, web_core_other->render_handler()->tex());
+			glBindTexture(GL_TEXTURE_2D, web_core_other.lock()->render_handler()->tex());
 			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
 
 
@@ -238,13 +229,11 @@ int main(int argc, char *argv[])
 			// update
 			glfwPollEvents();
 
-			// cef
-			CefDoMessageLoopWork();
+			g_web_core_manager.update();
 		}
 		else 
 		{
-			// cef
-			CefDoMessageLoopWork();
+			g_web_core_manager.update();
 			Sleep(50);
 		}
 
@@ -255,9 +244,8 @@ int main(int argc, char *argv[])
 	}
 
 	// close cef
-	web_core_other.reset();
-	web_core.reset();
-	CefShutdown();
+	g_web_core_manager.removeBrowser(web_core);
+	g_web_core_manager.shutDown();
 
 	if (prog)
 	{

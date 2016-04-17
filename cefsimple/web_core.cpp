@@ -2,7 +2,67 @@
 #include "browser_client.h"
 #include "render_handler.h"
 
+#include <cassert>
 #include <include/cef_app.h>
+
+WebCoreManager::WebCoreManager()
+{
+
+}
+
+WebCoreManager::~WebCoreManager()
+{
+
+}
+
+bool WebCoreManager::setUp(int *exit_code)
+{
+	assert(exit_code != nullptr);
+
+	CefMainArgs args;
+	*exit_code = CefExecuteProcess(args, nullptr, nullptr);;
+	if (*exit_code >= 0) { 
+		return false;
+	}
+
+	CefSettings settings;
+	bool result = CefInitialize(args, settings, nullptr, nullptr);
+	if (!result) {
+		*exit_code = -1;
+		return false;
+	}
+	return true;
+}
+
+bool WebCoreManager::shutDown()
+{
+	browsers_.clear();
+	CefShutdown();
+	return true;
+}
+
+void WebCoreManager::update()
+{
+	CefDoMessageLoopWork();
+}
+
+std::weak_ptr<WebCore> WebCoreManager::createBrowser(const std::string &url)
+{
+	auto web_core = std::make_shared<WebCore>(url);
+	browsers_.push_back(web_core);
+	return web_core;
+}
+
+void WebCoreManager::removeBrowser(std::weak_ptr<WebCore> web_core)
+{
+	auto elem = web_core.lock();
+	if (elem) {
+		auto found = std::find(browsers_.begin(), browsers_.end(), elem);
+		if (found != browsers_.end()) {
+			browsers_.erase(found);
+		}
+	}
+}
 
 WebCore::WebCore(const std::string &url)
 	: mouse_x_(0), mouse_y_(0)
