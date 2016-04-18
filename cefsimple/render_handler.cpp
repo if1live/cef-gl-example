@@ -1,3 +1,4 @@
+﻿// Ŭnicode please
 #include "render_handler.h"
 
 RenderHandler::RenderHandler()

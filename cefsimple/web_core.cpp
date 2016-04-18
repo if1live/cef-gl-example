@@ -1,3 +1,4 @@
+﻿// Ŭnicode please
 #include "web_core.h"
 #include "browser_client.h"
 #include "render_handler.h"

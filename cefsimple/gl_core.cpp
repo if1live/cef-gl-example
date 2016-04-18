@@ -1,3 +1,4 @@
+﻿// Ŭnicode please
 #include "gl_core.h"
 
 #include <fstream>

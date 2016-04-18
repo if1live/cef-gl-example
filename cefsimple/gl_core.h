@@ -1,3 +1,4 @@
+﻿// Ŭnicode please
 #include <GL/glew.h>
 
 namespace GLCore

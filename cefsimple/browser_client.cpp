@@ -1,3 +1,4 @@
+﻿// Ŭnicode please
 #include "browser_client.h"
 #include "render_handler.h"
 

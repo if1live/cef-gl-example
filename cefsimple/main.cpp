@@ -1,6 +1,4 @@
-#include <stdlib.h>
-#include <stdio.h>
-
+﻿// Ŭnicode please
 #include <string>
 #include <map>
 #include <algorithm>
@@ -55,14 +53,14 @@ GLFWwindow *initialize_glfw_window(int w, int h)
 	glfwSetErrorCallback(error_callback);
 	if (!glfwInit())
 	{
-		exit(EXIT_FAILURE);
+		return nullptr;
 	}
 
 	GLFWwindow* window = glfwCreateWindow(w, h, "CEF + OpenGL", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
-		exit(EXIT_FAILURE);
+		return nullptr;
 	}
 	glfwMakeContextCurrent(window);
 
@@ -73,7 +71,6 @@ void shutdown_glfw(GLFWwindow *window)
 {
 	glfwDestroyWindow(window);
 	glfwTerminate();
-	exit(EXIT_SUCCESS);
 }
 
 bool initialize_glew_context()
@@ -83,23 +80,9 @@ bool initialize_glew_context()
 	{
 		// Problem: glewInit failed, something is seriously wrong
 		fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
-		exit(EXIT_FAILURE);
 		return false;
 	}
 	fprintf(stdout, "Status: Using GLEW %s\n", glewGetString(GLEW_VERSION));
-	return true;
-}
-
-bool is_main_process(int argc, char *argv[]) 
-{
-	for (int i = 0; i < argc; i++) 
-	{
-		std::string arg(argv[i]);
-		auto found = arg.find("--channel");
-		if (found != std::string::npos) {
-			return false;
-		}
-	}
 	return true;
 }
 
@@ -117,25 +100,36 @@ GLint mvp_loc = -1;
 
 int main(int argc, char *argv[])
 {
-	bool main_process = is_main_process(argc, argv);
+	// CEF / GL 초기화 순서
+	// CEF -> GL 순서로 초기화할 경우 다음과 같은 문제가 생길수 있다
+	// * CEF 초기화 성공 -> GL 초기화 실패 -> 현재 프로세스 종료 -> 근데 CEF는 별도 프로세스로 돌아가니까 제대로 안꺼짐
+	// GL -> CEF 순서로 초기화 할 경우 다음의 문제가 생길수 있다
+	// * CEF는 내부에서 sub-process를 생성한다.
+	// * CefExecuteProcess 를 호출하지 않으면 현재 프로세스가 자식인지 부모인지 확실히 알수없다.
+
+	// 두가지 문제중에서 CEF 프로세스의 정체를 확인하는게 더 골치아플거라고 생각해서 CEF->GL 순서로 초기화함
+	int exit_code = 0;
+	bool success = g_web_core_manager.setUp( &exit_code );
+	if ( !success ) { 
+		return exit_code; 
+	}
 
 	int width = 640;
 	int height = 480;
 
-	GLFWwindow *window = nullptr;
-	if(main_process) 
-	{
-		// create GL context
-		window = initialize_glfw_window(width, height);
-
-		// initialize glew context
-		initialize_glew_context();
+	// create GL context
+	GLFWwindow *window = initialize_glfw_window(width, height);
+	if (!window) {
+		g_web_core_manager.shutDown();
+		return -1;
 	}
 
-	
-	int exit_code = 0;
-	bool success = g_web_core_manager.setUp(&exit_code);
-	if (!success) { return exit_code; }
+	// initialize glew context
+	bool glew_init_success = initialize_glew_context();	
+	if (!glew_init_success) {
+		g_web_core_manager.shutDown();
+		return -1;
+	}
 
 	std::string url = "http://google.com";
 	web_core = g_web_core_manager.createBrowser(url);
@@ -153,17 +147,13 @@ int main(int argc, char *argv[])
 	glfwSetFramebufferSizeCallback(window, reshape_callback);
 
 	// shader
-	GLuint prog = 0;
-	if (window) 
-	{
-		prog = GLCore::createShaderProgram("shaders/tex.vert", "shaders/tex.frag");
-		assert(prog != 0 && "shader compile failed");
+	GLuint prog = GLCore::createShaderProgram("shaders/tex.vert", "shaders/tex.frag");
+	assert(prog != 0 && "shader compile failed");
 
-		pos_loc = glGetAttribLocation(prog, "a_position");
-		texcoord_loc = glGetAttribLocation(prog, "a_texcoord");
-		tex_loc = glGetUniformLocation(prog, "s_tex");
-		mvp_loc = glGetUniformLocation(prog, "u_mvp");
-	}
+	pos_loc = glGetAttribLocation(prog, "a_position");
+	texcoord_loc = glGetAttribLocation(prog, "a_texcoord");
+	tex_loc = glGetUniformLocation(prog, "s_tex");
+	mvp_loc = glGetUniformLocation(prog, "u_mvp");
 
 	// initial GL state
 	glViewport(0, 0, width, height);
@@ -193,68 +183,50 @@ int main(int argc, char *argv[])
 		0, 3, 2,
 	};
 
-	while (true)
+	while (!glfwWindowShouldClose( window ) )
 	{
-		if (window) {
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			glUseProgram(prog);
+		glUseProgram(prog);
 
-			glm::mat4 mvp = glm::ortho(-1, 1, -1, 1);
-			//mvp *= glm::rotate((float)glfwGetTime() * 10.f, glm::vec3(0, 0, 1));
-			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
+		glm::mat4 mvp = glm::ortho(-1, 1, -1, 1);
+		//mvp *= glm::rotate((float)glfwGetTime() * 10.f, glm::vec3(0, 0, 1));
+		glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
 
-			glEnableVertexAttribArray(pos_loc);
-			glEnableVertexAttribArray(texcoord_loc);
+		glEnableVertexAttribArray(pos_loc);
+		glEnableVertexAttribArray(texcoord_loc);
 
-			// bind texture
-			glBindTexture(GL_TEXTURE_2D, web_core.lock()->render_handler()->tex());
+		// bind texture
+		glBindTexture(GL_TEXTURE_2D, web_core.lock()->render_handler()->tex());
 
-			// draw
-			glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-			glVertexAttribPointer(texcoord_loc, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
-			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
-
-
-			// draw other web core
-			mvp *= glm::rotate((float)glfwGetTime() * 0.1f, glm::vec3(0, 0, 1));
-			mvp *= glm::scale(glm::vec3(0.5, 0.5, 0.5));
-			glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
-			glBindTexture(GL_TEXTURE_2D, web_core_other.lock()->render_handler()->tex());
-			glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
+		// draw
+		glVertexAttribPointer(pos_loc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+		glVertexAttribPointer(texcoord_loc, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
+		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
 
 
-			glfwSwapBuffers(window);
+		// draw other web core
+		mvp *= glm::rotate((float)glfwGetTime() * 0.1f, glm::vec3(0, 0, 1));
+		mvp *= glm::scale(glm::vec3(0.5, 0.5, 0.5));
+		glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
+		glBindTexture(GL_TEXTURE_2D, web_core_other.lock()->render_handler()->tex());
+		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_SHORT, indices);
 
-			// update
-			glfwPollEvents();
+		// render end
+		glfwSwapBuffers(window);
 
-			g_web_core_manager.update();
-		}
-		else 
-		{
-			g_web_core_manager.update();
-			Sleep(50);
-		}
+		// update
+		glfwPollEvents();
 
-		if (glfwWindowShouldClose(window)) 
-		{
-			break;
-		}
+		g_web_core_manager.update();
 	}
+
+	GLCore::deleteProgram(prog);
+	shutdown_glfw(window);
 
 	// close cef
-	g_web_core_manager.removeBrowser(web_core);
+	g_web_core_manager.removeBrowser( web_core );
 	g_web_core_manager.shutDown();
-
-	if (prog)
-	{
-		GLCore::deleteProgram(prog);
-	}
-	if (window) 
-	{	
-		shutdown_glfw(window);
-	}
 
 	return 0;  
 }
